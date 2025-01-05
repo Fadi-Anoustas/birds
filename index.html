@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>حساب موعد فقس البيضة</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: "Cairo", sans-serif;
+            background: linear-gradient(to bottom, rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.7)),
+            url('pic/birds.jpg') no-repeat center center fixed;
+
+            background-size: cover;
+            color: #fff;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            text-align: center;
+            background-color: rgba(0, 0, 0, 0.5);
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+        }
+
+        header h1 {
+            font-size: 2rem;
+            text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.5);
+            margin-bottom: 20px;
+        }
+
+        .card {
+            margin: 20px 0;
+            padding: 20px;
+            background-color: rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+        }
+
+        .input-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        input[type="date"],
+        input[type="text"] {
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            font-size: 1rem;
+            background-color: #fff;
+            color: #333;
+        }
+
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            background-color: #4CAF50;
+            color: #fff;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+
+        th, td {
+            padding: 10px;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            background-color: rgba(0, 0, 0, 0.5);
+            color: #fff;
+        }
+        /* زر الحذف */
+        .delete-btn {
+            background-color: #ff6666;
+            border-radius: 5px;
+            color: #fff;
+            padding: 8px 15px;
+            cursor: pointer;
+            border: none;
+        }
+        .delete-btn:hover {
+            background-color: #ff4d4d;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>حساب موعد فقس البيضة</h1>
+        </header>
+
+        <!-- بطاقة إدخال البيانات -->
+        <div class="card">
+            <div class="input-container">
+                <!-- إدخال رقم القفص -->
+                <input type="text" id="cageNumber" placeholder="رقم القفص" />
+
+                <!-- إدخال تاريخ البيضة -->
+                <input type="date" id="eggDate" />
+                
+                <!-- زر إضافة التاريخ والسجل -->
+                <button id="addDateBtn">أضف السجل</button>
+            </div>
+        </div>
+
+        <!-- بطاقة عرض السجلات -->
+        <section class="card">
+            <h2>سجل التواريخ</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>رقم القفص</th>
+                        <th>تاريخ البيضة</th>
+                        <th>تاريخ الفقس المتوقع</th>
+                        <th>حذف</th>
+                    </tr>
+                </thead>
+                <tbody id="recordsTable"></tbody>
+            </table>
+        </section>
+    </div>
+
+    <script>
+        // اسم وقيمة نسخة قاعدة البيانات
+        const DB_NAME = 'EggHatchDB';
+        // رفع إصدار قاعدة البيانات إذا كنت قد استخدمت نفس الاسم سابقًا
+        // لضمان إجراء onupgradeneeded في حال كان الإصدار الأقدم لا يدعم أي تعديلات
+        const DB_VERSION = 2;
+        let db;
+
+        // فتح قاعدة البيانات
+        async function openDatabase() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+                request.onupgradeneeded = (event) => {
+                    console.log('Upgrading database...');
+                    db = event.target.result;
+                    // إن لم يكن لدينا Object Store سابقًا
+                    if (!db.objectStoreNames.contains('records')) {
+                        db.createObjectStore('records', { keyPath: 'id', autoIncrement: true });
+                    }
+                };
+
+                request.onsuccess = (event) => {
+                    console.log('Database opened successfully');
+                    db = event.target.result;
+                    resolve();
+                };
+
+                request.onerror = (event) => {
+                    console.error('Failed to open database:', event.target.error);
+                    reject(event.target.error);
+                };
+            });
+        }
+
+        // إضافة سجل إلى قاعدة البيانات
+        async function addRecordToDB(record) {
+            return new Promise((resolve, reject) => {
+                const transaction = db.transaction(['records'], 'readwrite');
+                const store = transaction.objectStore('records');
+                const request = store.add(record);
+
+                request.onsuccess = () => {
+                    console.log('Record stored in IndexedDB:', record);
+                    resolve();
+                };
+
+                request.onerror = (event) => {
+                    console.error('Failed to store record:', event.target.error);
+                    reject(event.target.error);
+                };
+            });
+        }
+
+        // جلب جميع السجلات من قاعدة البيانات
+        async function fetchRecordsFromDB() {
+            return new Promise((resolve, reject) => {
+                const transaction = db.transaction(['records'], 'readonly');
+                const store = transaction.objectStore('records');
+                const request = store.getAll();
+
+                request.onsuccess = (event) => {
+                    resolve(event.target.result);
+                };
+                request.onerror = (event) => {
+                    reject(event.target.error);
+                };
+            });
+        }
+
+        // حذف سجل من قاعدة البيانات
+        async function deleteRecordFromDB(id) {
+            return new Promise((resolve, reject) => {
+                const transaction = db.transaction(['records'], 'readwrite');
+                const store = transaction.objectStore('records');
+                const request = store.delete(id);
+
+                request.onsuccess = () => {
+                    console.log(`Record with ID ${id} deleted from IndexedDB`);
+                    resolve();
+                };
+
+                request.onerror = (event) => {
+                    console.error('Failed to delete record:', event.target.error);
+                    reject(event.target.error);
+                };
+            });
+        }
+
+        // تحميل السجلات في الجدول
+        async function loadRecords() {
+            try {
+                const records = await fetchRecordsFromDB();
+                console.log('Fetched records:', records);
+                
+                // ترتيب السجلات حسب تاريخ البيضة (من الأقدم إلى الأحدث)
+                records.sort((a, b) => new Date(a.eggDate) - new Date(b.eggDate));
+                
+                updateTable(records);
+            } catch (error) {
+                console.error('Failed to load records:', error);
+            }
+        }
+
+        // إضافة سجل جديد وتحميل السجلات
+        async function addRecord() {
+            const cageNumber = document.getElementById('cageNumber').value.trim();
+            const eggDateInput = document.getElementById('eggDate').value;
+
+            if (!eggDateInput) {
+                alert('يرجى إدخال تاريخ البيضة!');
+                return;
+            }
+            if (!cageNumber) {
+                alert('يرجى إدخال رقم القفص!');
+                return;
+            }
+
+            // عدد أيام الحضانة (مثال 14 يوم)
+            const incubationDays = 14;  
+            const eggDate = new Date(eggDateInput);
+            const hatchDate = new Date(eggDate);
+            hatchDate.setDate(eggDate.getDate() + incubationDays);
+
+            const record = {
+                cageNumber: cageNumber,
+                eggDate: eggDate.toISOString().split('T')[0],
+                hatchDate: hatchDate.toISOString().split('T')[0],
+            };
+
+            console.log('Adding record:', record);
+
+            try {
+                await addRecordToDB(record);
+                console.log('Record added successfully');
+                // بعد الإضافة، أعد تحميل السجلات لتحديث الجدول
+                loadRecords();
+            } catch (error) {
+                console.error('Failed to add record:', error);
+            }
+        }
+
+        // دالة حذف سجل
+        async function deleteRecord(id) {
+            // في حال رغبت بتأكيد الحذف من المستخدم
+            const confirmDelete = confirm("هل أنت متأكد من أنك تريد حذف هذا السجل؟");
+            if (!confirmDelete) return;
+
+            try {
+                await deleteRecordFromDB(id);
+                loadRecords(); // إعادة تحميل السجلات بعد الحذف
+            } catch (error) {
+                console.error('Failed to delete record:', error);
+            }
+        }
+
+        // تحديث محتوى الجدول
+        function updateTable(records) {
+            const tableBody = document.getElementById('recordsTable');
+            tableBody.innerHTML = '';
+
+            if (records.length === 0) {
+                console.log('No records to display');
+                return;
+            }
+
+            records.forEach((record) => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${record.cageNumber}</td>
+                    <td>${record.eggDate}</td>
+                    <td>${record.hatchDate}</td>
+                    <td>
+                        <!-- زر الحذف -->
+                        <button class="delete-btn" onclick="deleteRecord(${record.id})">
+                            حذف
+                        </button>
+                    </td>
+                `;
+                tableBody.appendChild(row);
+            });
+        }
+
+        // تهيئة التطبيق
+        async function initializeApp() {
+            await openDatabase();
+            loadRecords();
+        }
+
+        // ربط الأحداث
+        window.addEventListener('load', initializeApp);
+        document.getElementById('addDateBtn').addEventListener('click', addRecord);
+    </script>
+</body>
+</html>
